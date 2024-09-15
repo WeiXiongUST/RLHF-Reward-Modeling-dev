@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import torch
 import torch.nn as nn
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
+import re
 # from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (
     AutoModelForSequenceClassification,
@@ -47,13 +48,13 @@ class ScriptArguments:
             "help": "Path to deepspeed config if using deepspeed. You may need this if the model that you want to train doesn't fit on a single GPU."
         },
     )
-    per_device_train_batch_size: Optional[int] = field(default=4)
+    per_device_train_batch_size: Optional[int] = field(default=2)
     per_device_eval_batch_size: Optional[int] = field(default=1)
-    gradient_accumulation_steps: Optional[int] = field(default=32)
-    learning_rate: Optional[float] = field(default=1e-5)
+    gradient_accumulation_steps: Optional[int] = field(default=8)
+    learning_rate: Optional[float] = field(default=1e-6)
     weight_decay: Optional[float] = field(default=0.001)
     model_name: Optional[str] = field(
-        default="google/gemma-2b-it", #"mistralai/Mistral-7B-Instruct-v0.2",
+        default="meta-llama/Meta-Llama-3-8B-Instruct", #"mistralai/Mistral-7B-Instruct-v0.2",
         metadata={
             "help": "The model that you want to train from the Hugging Face hub. E.g. gpt2, gpt2-xl, bert, etc."
         },
@@ -69,7 +70,7 @@ class ScriptArguments:
         metadata={"help": "The number of training epochs for the reward model."},
     )
     train_set_path: Optional[str] = field(
-        default="hendrydong/preference_700K",
+        default="Thunderous77/unbiased_training_pairs",
         metadata={"help": "The dir of the subset of the training data to use"},
     )
     eval_set_path: Optional[str] = field(
@@ -122,6 +123,8 @@ tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, use_auth_token=True)
 
 # Adjusted according to the base model
 # Need to do this for the models that don't have an official pad token.
+tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+
 tokenizer.truncation_side = "left"
 tokenizer.model_max_length = script_args.max_length
 correlation_with_length = script_args.correlation_with_length
@@ -155,7 +158,10 @@ def build_dataset(tokenizer, train_path, eval_path):
         return sample
     #ds = load_dataset(train_path, split="train").shuffle(seed=42)
     # to have a quicker iteration, we just use 500 examples here.
-    ds = load_dataset(train_path, split="train").shuffle(seed=42)
+    old_ds = load_dataset(train_path, split="train").shuffle(seed=42)
+    attack_ds = load_dataset("Thunderous77/list_training_pairs", split="train")
+    ds = concatenate_datasets([old_ds, attack_ds])
+    ds = ds.shuffle(seed=42)
     #ds = ds.select(range(2000))
     ds = ds.map(tokenize, num_proc=8)
 
@@ -213,6 +219,8 @@ model = AutoModelForSequenceClassification.from_pretrained(
 # model.print_trainable_parameters()
 
 model.config.use_cache = not script_args.gradient_checkpointing
+model.config.pad_token_id = tokenizer.pad_token_id
+model.resize_token_embeddings(len(tokenizer))
 num_proc = 24  # Can adjust to be higher if you have more processors.
 original_columns = train_dataset.column_names
 
@@ -230,8 +238,8 @@ class RewardDataCollatorWithPadding:
         merged_features = []
         seqlens = []
         for feature in features:
-            length_j = has_bold_or_list(feature['chosen'][1]['content'])
-            length_k = has_bold_or_list(feature['rejected'][1]['content'])
+            length_j = 0.0000001 + has_bold_or_list(feature['chosen'][1]['content'])
+            length_k = 0.0000001 + has_bold_or_list(feature['rejected'][1]['content'])
             seqlens.append(length_j)
             seqlens.append(length_k)
             merged_features.append(
