@@ -1,10 +1,12 @@
 # RLHF-Reward-Modeling: Math Reward
 
-+ Models:
-  + Llama-3 8B: https://huggingface.co/RLHFlow/pair-preference-model-LLaMA3-8B 
-+ Blog: https://rlhflow.github.io/posts/2024-05-29-multi-objective-reward-modeling/
-+ Tech Report: [RLHF Workflow: From Reward Modeling to Online RLHF](https://arxiv.org/pdf/2405.07863)
-  
+Model
+- [RLHFlow/Llama3.1-8B-PRM](https://huggingface.co/RLHFlow/Llama3.1-8B-PRM)
+
+## Introduction
+
+We present an impementation of process-supervision reward model, as described in the [Math Shepherd paper](https://arxiv.org/abs/2312.08935). We follow the original paper to use the hard label and SFT training pipeline.
+
 ## Installation instructions
 
 Before starting, please make sure your linux machine has [nvidia-cuda-toolkit](https://developer.nvidia.com/cuda-toolkit) installed. The environment setup is the same as the pairwise preference model.
