@@ -1,4 +1,4 @@
-base_model: google/gemma-2b-it
+base_model: google/gemma-2-2b-it
 model_type: AutoModelForCausalLM
 tokenizer_type: AutoTokenizer
 
@@ -7,7 +7,7 @@ load_in_4bit: false
 strict: false
 
 datasets:
-  - path: RLHFlow/pair-preference-dataset-mix1
+  - path: RLHFlow/pair_preference_model_dataset
     conversation: gemma
     type: sharegpt.load_ultrachat
     split: "train"
@@ -32,7 +32,7 @@ dataset_prepared_path: ~/data/preference-models/last_run_prepared
 
 dataset_processes: 48
 #torch_compile: true
-sequence_len: 3072
+sequence_len: 8192
 sample_packing: true
 pad_to_sequence_len: true
 
@@ -46,12 +46,12 @@ lora_model_dir:
 gradient_checkpointing: false
 
 #warmup_ratio: 0.1
-gradient_accumulation_steps: 8
-micro_batch_size: 2
+gradient_accumulation_steps: 1
+micro_batch_size: 8
 num_epochs: 1
 optimizer: adamw_torch_fused
 lr_scheduler: cosine
-learning_rate: 1.e-5
+learning_rate: 5.e-6
 
 weight_decay: 0.0
 max_grad_norm: 1.0
