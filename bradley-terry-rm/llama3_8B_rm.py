@@ -39,10 +39,10 @@ class ScriptArguments:
             "help": "Path to deepspeed config if using deepspeed. You may need this if the model that you want to train doesn't fit on a single GPU."
         },
     )
-    per_device_train_batch_size: Optional[int] = field(default=1)
-    per_device_eval_batch_size: Optional[int] = field(default=1)
+    per_device_train_batch_size: Optional[int] = field(default=4)
+    per_device_eval_batch_size: Optional[int] = field(default=4)
     # for 8 GPU, the global batch size is 512
-    gradient_accumulation_steps: Optional[int] = field(default=64)
+    gradient_accumulation_steps: Optional[int] = field(default=1)
     learning_rate: Optional[float] = field(default=2e-6)
     weight_decay: Optional[float] = field(default=0.001)
     model_name: Optional[str] = field(
@@ -66,7 +66,7 @@ class ScriptArguments:
         metadata={"help": "The dir of the subset of the training data to use"},
     )
     eval_set_path: Optional[str] = field(
-        default="hendrydong/preference_700K",
+        default="RLHFlow/Mistral-ORM-Data",
         metadata={"help": "The dir of the subset of the eval data to use"},
     )
     output_path: Optional[str] = field(
@@ -184,7 +184,7 @@ training_args = TrainingArguments(
     label_names=[],
     bf16=script_args.bf16,
     logging_strategy="steps",
-    logging_steps=10,
+    logging_steps=1,
     optim=script_args.optim,
     lr_scheduler_type=script_args.lr_scheduler_type,
     warmup_ratio=0.03,
@@ -214,7 +214,7 @@ class RewardDataCollatorWithPadding:
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         merged_features = []
-
+        label_list = []
         for feature in features:
             merged_features.append(
                 {
@@ -222,6 +222,7 @@ class RewardDataCollatorWithPadding:
                     "attention_mask": feature["attention_mask_j"],
                 }
             )
+            label_list.append([feature['label']])
     
         batch = self.tokenizer.pad(
             merged_features,
@@ -233,40 +234,36 @@ class RewardDataCollatorWithPadding:
         batch = {
             "input_ids": batch["input_ids"],
             "attention_mask": batch["attention_mask"],
+            "label": label_list,
             "return_loss": True,
         }
         return batch
 
 
 # Define the trainer
-def compute_metrics(eval_pred):
-    result = {}
-    pos_predictions_scores = eval_pred.predictions[0]
-    neg_predictions_scores = eval_pred.predictions[1]
-    # We assume that the first sample is preferred by default in groundtruth
-    result['accuracy'] = np.sum(
-        pos_predictions_scores > neg_predictions_scores) / len(pos_predictions_scores)
-    return result
+# def compute_metrics(eval_pred):
+#     print(eval_pred)
+#     result = {}
+#     result['eval_loss'] = eval_pred.predictions[0]
+    
+#     return result
 
 
 class RewardTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
-        rewards = model(
+        outputs = model(
             input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"]
-        )[0]
-        '''
-        bsz = rewards.size(0)
-        jidx = torch.arange(0, bsz, 2)
-        kidx = jidx + 1
-        rewards_j = rewards[jidx]
-        rewards_k = rewards[kidx]
-        '''
-        labels = sample['label']
+        )
+        label = inputs['label']
+        label = torch.tensor(label).to(outputs.logits.device)
+        probs = torch.sigmoid(outputs.logits)
+        torch.log(probs)
+        loss = label * torch.log(probs) + (1 - label) * torch.log(1 - probs)
+        final_loss = -torch.mean(loss)
 
-        loss = -nn.functional.logsigmoid(rewards_j - rewards_k).mean()
         if return_outputs:
-            return loss, {"rewards": rewards}
-        return loss
+            return final_loss, {"loss":final_loss}
+        return final_loss
 
 
 # Train the model, woohoo.
@@ -275,7 +272,7 @@ trainer = RewardTrainer(
     args=training_args,
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,
-    compute_metrics=compute_metrics,
+    #compute_metrics=compute_metrics,
     data_collator=RewardDataCollatorWithPadding(
         tokenizer=tokenizer, max_length=script_args.max_length),
 )
