@@ -39,10 +39,10 @@ class ScriptArguments:
             "help": "Path to deepspeed config if using deepspeed. You may need this if the model that you want to train doesn't fit on a single GPU."
         },
     )
-    per_device_train_batch_size: Optional[int] = field(default=4)
+    per_device_train_batch_size: Optional[int] = field(default=8)
     per_device_eval_batch_size: Optional[int] = field(default=4)
     # for 8 GPU, the global batch size is 512
-    gradient_accumulation_steps: Optional[int] = field(default=1)
+    gradient_accumulation_steps: Optional[int] = field(default=2)
     learning_rate: Optional[float] = field(default=2e-6)
     weight_decay: Optional[float] = field(default=0.001)
     model_name: Optional[str] = field(
@@ -256,10 +256,11 @@ class RewardTrainer(Trainer):
             input_ids=inputs["input_ids"], attention_mask=inputs["attention_mask"]
         )
         label = inputs['label']
-        label = torch.tensor(label).to(outputs.logits.device)
+        label = torch.tensor(label,dtype=torch.bfloat16).to(outputs.logits.device)
         probs = torch.sigmoid(outputs.logits)
         #torch.log(probs)
-        loss = label * torch.log(probs) + (1 - label) * torch.log(1 - probs)
+        #print(probs)
+        loss = label * torch.log(probs+1e-10) + (1 - label) * torch.log(1 - probs+1e-10)
         final_loss = -torch.mean(loss)
 
         if return_outputs:
