@@ -94,7 +94,7 @@ class ScriptArguments:
         metadata={"help": "Save the model every x steps"},
     )
     eval_every_steps: Optional[int] = field(
-        default=999999,
+        default=50,
         metadata={"help": "Eval the model every x steps"},
     )
 
@@ -188,7 +188,8 @@ training_args = TrainingArguments(
     optim=script_args.optim,
     lr_scheduler_type=script_args.lr_scheduler_type,
     warmup_ratio=0.03,
-    report_to='wandb'
+    report_to='wandb',
+    save_only_model = True
 )
 
 model = AutoModelForSequenceClassification.from_pretrained(
@@ -257,7 +258,7 @@ class RewardTrainer(Trainer):
         label = inputs['label']
         label = torch.tensor(label).to(outputs.logits.device)
         probs = torch.sigmoid(outputs.logits)
-        torch.log(probs)
+        #torch.log(probs)
         loss = label * torch.log(probs) + (1 - label) * torch.log(1 - probs)
         final_loss = -torch.mean(loss)
 
