@@ -71,7 +71,7 @@ rm_pipe = pipeline(
     truncation=True,
 )
 
-
+output_name = "1231czx/" + script_args.output_dir.replace(".json", "")
 ds_dir = script_args.dataset_name_or_path
 world_size = int(os.getenv("WORLD_SIZE", "1"))
 if 'DS' in ds_dir or 'Deep' in ds_dir:
@@ -170,3 +170,15 @@ if local_rank == 0:
         for i in range(len(gathered_data)):
             json.dump(gathered_data[i], f, ensure_ascii=False)
             f.write('\n')
+
+    dict_data = {
+    "prompt": [d['prompt'] for d in all_data],
+    "answers": [d['answers'] for d in all_data],
+    "rewards": [d['rewards'] for d in all_data],
+        "label": [d['label'] for d in all_data],
+    }
+    
+    from datasets import Dataset, DatasetDict
+    dataset = Dataset.from_dict(dict_data)
+    dataset = dataset.shuffle(seed=42)
+    DatasetDict({"train": dataset}).push_to_hub(output_name)
