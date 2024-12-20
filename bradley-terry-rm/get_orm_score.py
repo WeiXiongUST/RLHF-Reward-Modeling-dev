@@ -24,11 +24,11 @@ class ScriptArguments:
     """
 
     dataset_name_or_path: Optional[str] = field(
-        default="weqweasdas/MS-MATH",
+        default="myselfrew/llama3_math_test_tmp07",
         metadata={"help": "the location of the dataset name or path"},
     )
     output_dir: Optional[str] = field(
-        default="head_orm_2e6_bz128.json",
+        default="llama3_math_test_tmp07_orm_1e6.json",
         metadata={"help": "the location of the output file"},
     )
     record_dir: Optional[str] = field(
@@ -36,7 +36,7 @@ class ScriptArguments:
         metadata={"help": "the location of the recording file"},
     )
     reward_name_or_path: Optional[str] = field(
-        default="HanningZhang/ORM-2e6-bz128",#"1231czx/llama3_sft_v2_henry700k_no_code_no_math_boundary_loss",
+        default="1231czx/llama3_orm_1e6",
         metadata={"help": "the name of the reward model"},
     )
     input_output_delimiter: Optional[str] = field(
@@ -122,13 +122,14 @@ with torch.no_grad():
         # The VLLM may not generate responses for some prompts because it is too long, we skip them
         #if len(sample["responses"]) < script_args.K:
         #    continue
-        test_texts = [change_of_format(sample['prompt'], tmp_output) for tmp_output in sample['answers']]
-        all_len = [len(tmp_output) for tmp_output in sample['answers']]
+        #test_texts = [change_of_format(sample['prompt'], tmp_output) for tmp_output in sample['answers']]
+        test_texts = sample['my_solu'][0].replace("<|start_header_id|>user<|end_header_id|>\n\nYour most recent response is correct. Thanks.ENDSIGNAL\nReach max function call limit.", "")
+        #all_len = [len(tmp_output) for tmp_output in sample['answers']]
         if z == 0:
             print(test_texts[0])
             z += 1
-        rewards = get_reward(test_texts, all_len)
-        data.append({"prompt": sample["prompt"], "answers": sample["answers"], "rewards": rewards, "label": sample['label']})
+        rewards = get_reward(test_texts)
+        data.append({"idx": sample["idx"], "gt": sample["gt"], "my_solu": sample["my_solu"], "preds": sample["preds"], "prox_rewards": rewards, "true_rewards": sample['rewards']})
 # Send the data to other GPUs
 world_size = int(os.getenv("WORLD_SIZE", "1"))
 all_process_list = [{}] * world_size
@@ -147,35 +148,18 @@ for i in range(world_size):
     tmp_data = [tmp[0] for tmp in all_process_list[i]["data"]]
     gathered_data.extend(tmp_data)
 
-all_rewards = [sample["rewards"] for sample in gathered_data]
-top1_scores = np.mean(np.max(all_rewards, axis=1))
-mean_scores = np.mean(all_rewards)
-
-
 
 if local_rank == 0:
-    print(
-        "Collect {} data from {} inputs. mean score {} top1 score: {}".format(
-            len(gathered_data), data_size, mean_scores, top1_scores
-        )
-    )
-    if len(gathered_data) < data_size:
-        print(
-            "Some of the prompts are with responses < {}. This can happen because the prompt is too long and is ignored by VLLM".format(
-                script_args.K
-            )
-        )
-
     with open(script_args.output_dir, "w", encoding="utf8") as f:
         for i in range(len(gathered_data)):
             json.dump(gathered_data[i], f, ensure_ascii=False)
             f.write('\n')
 
     dict_data = {
-    "prompt": [d['prompt'] for d in all_data],
-    "answers": [d['answers'] for d in all_data],
-    "rewards": [d['rewards'] for d in all_data],
-        "label": [d['label'] for d in all_data],
+    "prompt": [d['prompt'] for d in gathered_data],
+    "answers": [d['answers'] for d in gathered_data],
+    "rewards": [d['rewards'] for d in gathered_data],
+        "label": [d['label'] for d in gathered_data],
     }
     
     from datasets import Dataset, DatasetDict
